@@ -2,11 +2,7 @@ C Deeply ([cdeeply.com](https://www.cdeeply.com)) is devoted to building AI modu
 The web portal allows a 1 second computation time, used for architecture search and network training from a table of numbers.
 
 This repository contains libraries and plugins that allow C Deeply's NN generator to be called directly by another application
-rather than manually through the web portal.  Currently the following interfaces are available:
-
-- C/C++ library
-
-Each interface gives access to two NN generators:
+rather than manually through the web portal.  Each interface gives access to two NN generators:
 
 - Supervised NN training predicts certain columns/rows from others.  This is similar to what XGBoost accomplishes.
 - Unsupervised NN training finds features in the data:  produces an autoencoder, or just an encoder or decoder.
