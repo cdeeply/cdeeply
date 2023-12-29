@@ -4,7 +4,7 @@ The web portal allows a 1 second computation time, used for architecture search 
 This repository contains libraries and plugins that allow C Deeply's algorithms to be called directly by another application
 rather than manually through the web portal.  The current interfaces are:
 
-- Bash scripting -- this returns the neural network embedded in an HMTL file, rather than the raw data
+- UNIX Bash scripts -- these return the neural network embedded in an HMTL file, rather than the raw data
 
 Each interface gives access to two methods:
 
