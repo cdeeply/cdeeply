@@ -8,10 +8,10 @@ rather than manually through the web portal.  The current interfaces are:
 
 Each interface gives access to two methods:
 
-- Supervised training (regression) is used to predict certain columns/rows from others in the table.  This is similar to what XGBoost accomplishes.
-- Unsupervised training finds features in the data.  The algorithm produces an autoencoder, or just an encoder or decoder.
+- Supervised training (regression) is used to predict certain columns/rows from others in the table.
+- Unsupervised training finds features in the data.  The algorithm can produce an autoencoder, or just an encoder or decoder.
 
-Additional methods (e.g. reinforcement training, training on image/audio data, etc) will be added as they are developed.
+Additional methods (e.g. reinforcement training, methods to use on image/audio data, etc) will be added as they are developed.
 
 All queries are subject to a daily limit.
 
