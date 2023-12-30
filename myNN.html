@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+	<title>NN trained on ##N## ##D##</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+	<script type="text/javascript">
+	
+##NN data##
+	const canCheckPrediction = (typeof trainingOutputs != 'undefined')
+	const trainingFileName = "##N##";
+	var numIOs, fName, displayFileName = "", dataWarning = false, wrapTo = 0;
+	var language, precision, precisionIdx, showInputs, writeHeaders, Ctype, separator=",";
+	var numSamples, whichAction, rowcol, tableNote, outputAsString, NNpredictor, costEstimator;
+	var percentTrainingError = 0, percentTestError = -1, NNerrPrecision = 0, NNerr;
+	
+	var tableNums = [];
+	var NNinputs = [], NNoutputs = [], NNvariationalInputs = [], trueOutputs = [], rowHeaders = [], colHeaders = [];
+	var headersToWrite = [];
+	
+	const fileSuffix = {  C:"c", Java:"java", JS:"js", MAT:"m", Py:"py", R:"r"  };
+	const lineBreak = {  C:"", Java:"", JS:"", MAT:"...", Py:"", R:""  };
+	const Ctypes = [ "float", "double" ];
+	const rowcolNames = [ "row", "column" ];
+	const tab1 = "    ";
+	const doExample = (exampleTestData.length > 0);
+	
+	function grand()  {  return Math.sqrt(-2.*Math.log(1.-Math.random())) * Math.cos(2.*Math.PI*Math.random())  }
+	
+	
+	function arrayStr(arr, printPrecision, arrayWidth, rowSeparator,
+				initFromLeft, nextLineIndent, lineBreakChar)  {
+		var cv, rtrn, charFromLeft, charsToAdd;
+		function toMaxPrecision(num)  {  return num.toPrecision(printPrecision)
+				.replace(/\.0+(e|E|$)/, "$1")
+				.replace(/\.([0-9]*)([1-9])0+(e|E|$)/, ".$1$2$3");  }
+		
+		if (arr.length == 0)  rtrn = "";
+		else  {
+			if (arrayWidth == 0)  arrayWidth = arr.length;
+			rtrn = toMaxPrecision(arr[0]);
+			charFromLeft = initFromLeft;
+			for (cv = 1; cv < arr.length; cv++)  {
+				if ((wrapTo > 0) && (charFromLeft >= wrapTo) && (cv < arr.length-1))  {
+					if (cv % arrayWidth == 0)  rtrn += rowSeparator + lineBreakChar + "\n";
+					else  rtrn += separator + lineBreakChar + "\n";
+					toAdd = nextLineIndent + toMaxPrecision(arr[cv]);
+					rtrn += toAdd;
+					charFromLeft = toAdd.length;		}
+				else  {
+					if (cv % arrayWidth == 0)  charsToAdd = rowSeparator + toMaxPrecision(arr[cv]);
+					else  charsToAdd = separator + toMaxPrecision(arr[cv]);
+					rtrn += charsToAdd;
+					charFromLeft += charsToAdd.length;
+		}	}	}
+		
+		return rtrn;
+	}
+	
+	
+	function NNcode(NNlanguage, NNprecision, writeFunctionDef)
+	{
+		var cl, cil;
+		const tab2 = tab1+tab1, tab3 = tab2+tab1;
+		
+		const varInputStr = {
+			C:  function()  {  return Ctype + " *"  },
+			Java:  function()  {  return Ctype + "[] "  },
+			JS:  function()  {  return ""  },
+			MAT:  function()  {  return "";  },
+			Py:  function()  {  return "";  },
+			R:  function()  {  return "";  }
+		}
+		
+		const initLayerDef = {
+			
+			C:  function()  {
+					if (!hasBias)  return "void clearLayer(" + Ctype + " *l, const int n)  {" +
+						"  memset(l, 0, n*sizeof(" + Ctype + "));  }\n\n";
+					else  return "void setLayer(" + Ctype + " *l, const " + Ctype + " *b, const int n)  {" +
+						"  memcpy(l, b, n*sizeof(" + Ctype + "));  }\n\n";  },
+			
+			Java:  function()  {
+					if (!hasBias)  return "private void clearLayer(" + Ctype + "[] l)  {" +
+						"  Arrays.fill(l, 0);  }\n\n";
+					else  return "private void setLayer(" + Ctype + "[] l, " + Ctype + "[] b)  {" +
+						"  System.arraycopy(b, 0, l, 0, l.length);  }\n\n";  },
+			
+			JS:  function()  {
+					if (!hasBias)  return "function clearLayer(l)  {  for (var i = 0; i < l.length; i++)  l[i] = 0;  }\n\n";
+					else  return "function setLayer(l, b)  {  for (var i = 0; i < l.length; i++)  l[i] = b[i];  }\n\n";  },
+			
+			MAT:  function()  {  return "";  },
+			Py:  function()  {  return "";  },
+			R:  function()  {  return "";  }
+		}
+		
+		const headers = {
+			
+			C:  function(dummy, initLayerStr, varInsDef)  {  return "#include <math.h>\n" + "#include <string.h>\n\n" +
+					initLayerStr +
+					"void addToLayer(" + Ctype + " *l, const int n, const " + Ctype + " *l0, " +
+								"const int n0, const " + Ctype + " *w)\n{\n" +
+					"    int i, i0;\n\n" +
+					"    for (i = 0; i < n; i++)  {\n" +
+					"    for (i0 = 0; i0 < n0; i0++)  {\n" +
+					"        l[i] += (*w) * l0[i0];\n" +
+					"        w++;\n    }}\n}\n\n" +
+					"void doTanh(" + Ctype + " *l, const int n)  {  int i;" +
+					"  for (i = 0; i < n; i++)  l[i] = tanh(l[i]);  }\n\n\n" +
+					tab1 + "// NN trained on " + trainingFileName + "\n" +
+					tab1 + "// usage:  NNpredict(" + Ctype + " inputs[" + layerSize[1] + "], " +
+							Ctype + " outputs[" + numOutputs + "]) -- processes a single sample\n\n" +
+					"void NNpredict(" + Ctype + " *ins" + varInsDef + ", " + Ctype + " *outs)\n{\n";  },
+			
+			Java:  function(dummy, d2, d3)  {  return "import java.lang.Math;\nimport java.lang.System;\n\n\n" +
+					tab1 + "// class 'myNN' trained on " + trainingFileName + "\n" +
+					tab1 + "// usage:  NNpredict(" + Ctype + "[" + layerSize[1] + "] inputs, " +
+							Ctype + "[" + numOutputs + "] outputs) -- processes a single sample\n\n" +
+					"public class myNN\n{\n";  },
+			
+			JS:  function(writeFunctionDef, d2, varInsDef)  {
+				if (!writeFunctionDef)  return "";
+				return tab1 + "// NN trained on " + trainingFileName + "\n" +
+						tab1 + "// usage:  NNpredict(inputs, outputs) -- processes a single sample\n" +
+						tab1 + "// * inputs[] has length " + layerSize[1] +
+								"; outputs[] has length " + numOutputs + "\n\n" +
+						"function NNpredict(ins" + varInsDef + ", outs)\n{\n";
+				return functionDef;		},
+			
+			MAT:  function(dummy, d2, d3)  {
+					return "% NN trained on " + trainingFileName + "\n\n" +
+						"% usage:  'NN = myNN', then 'outputs = NN.predict(myNN, inputs)' to process a single sample\n" +
+						"% * inputs is a length-" +  layerSize[1] +
+								" column vector; outputs will have length " + numOutputs + "\n\n" +
+					"classdef myNN < handle\nproperties\n\n" + tab1 + "ins\n" + tab1 + "outs\n";  },
+			
+			Py:  function(dummy, d2, d3)  {
+					return "import numpy as np\n\n\n" +
+					tab1 + "# NN trained on " + trainingFileName + "\n" +
+					tab1 + "# usage:  'outputs = myNN.predict(inputs)' to process a single sample\n" +
+					tab1 + "# * inputs[] has length " +  layerSize[1] +
+							"; outputs[] will have length " + numOutputs + "\n\n" +
+					"class NNpredictor:\n" + tab1;  },
+			
+			R:  function(dummy, d2, d3)  {
+					return tab1 + "# NN trained on " + trainingFileName + "\n" +
+					tab1 + "# usage:  'outputs = call NNpredict(inputs)' to process a single sample\n" +
+					tab1 + "# * inputs[] has length " +  layerSize[1] +
+							"; outputs[] will have length " + numOutputs + "\n\n" +
+					"make.NN <- function()\n{";  }
+		};
+		
+		const varDef = {
+			C:  function(lName, lSize)
+					{  return tab1 + Ctype + " " + lName + "[" + lSize + "];\n";  },
+			Java:  function(lName, lSize)
+					{  return tab1 + Ctype + "[] " + lName + " = new " + Ctype + "[" + lSize + "];\n";  },
+			JS:  function(lName, lSize)
+					{  return tab1 + "const " + lName + " = new Array(" + lSize + ");\n";  },
+			MAT:  function(lName, lSize)
+					{  return tab1 + lName + "\n";  },
+			Py:  function(lName, lSize)
+					{  return "";  },
+			R:  function(lName, lSize)
+					{  return "";  }
+		};
+		
+		const weightsDef = {
+			C:  function(wName, w, numRows)
+					{  return tab1 + "const static " + Ctype + " " + wName + "[] = { " + w + " };\n";  },
+			Java:  function(wName, w, numRows)
+					{  return tab1 + "private static final " + Ctype + "[] " + wName + " = { " + w + " };\n";  },
+			JS:  function(wName, w, numRows)
+					{  return tab1 + "const " + wName + " = [ " + w + " ];\n";  },
+			MAT:  function(wName, w, numRows)
+					{  return tab1 + wName + " = [ " + w + " ];\n";  },
+			Py:  function(wName, w, numRows)
+					{  return tab1 + wName + " = np.array([ " + w + " ])\n";  },
+			R:  function(wName, w, numRows)
+					{  return tab1 + wName + " <- matrix(c(" + w + "), nrow = " + numRows + ", byrow = TRUE)\n";  }
+		};
+		
+		const weightsDefLength = {
+			C:  function()  {  return tab1.length + Ctype.length + 21;  },
+			Java:  function()  {  return tab1.length + Ctype.length + 29;  },
+			JS:  function()  {  return tab1.length + 11;  },
+			MAT:  function()  {  return tab1.length + 5;  },
+			Py:  function()  {  return tab1.length + 14;  },
+			R:  function()  {  return tab1.length + 13;  }
+		};
+		
+		const methodDef = {
+			C:  function(dummy, d2)
+					{  return "";  },
+			Java:  function(initLayerStr, varInsDef)
+				{  return "\n" + tab1 + initLayerStr +
+					tab1 + "private void addToLayer(" + Ctype + "[] l, " + Ctype + "[] l0, " +
+								Ctype + "[] w)\n" + tab1 + "{\n" +
+						tab2 + "int i, i0, wIdx = 0;\n\n" +
+						tab2 + "for (i = 0; i < l.length; i++)  {\n" +
+						tab2 + "for (i0 = 0; i0 < l0.length; i0++)  {\n" +
+						tab2 + "    l[i] += w[wIdx] * l0[i0];\n" +
+						tab2 + "    wIdx++;\n" + tab2 + "}}\n" + tab1 + "}\n\n" +
+					tab1 + "private void doTanh(" + Ctype + "[] l)  {  int i;" +
+					"  for (i = 0; i < l.length; i++)  l[i] = Math.tanh(l[i]);  }\n\n" +
+					tab1 + "public void predict(" + Ctype + "[] ins" + varInsDef + ", " +
+						Ctype + "[] outs)\n" + tab1 + "{";  },
+			JS:  function(initLayerStr, d2)  {  return "\n" +
+					tab1 + initLayerStr +
+					tab1 + "function addToLayer(l, l0, w)\n" + tab1 + "{\n" +
+						tab2 + "var n, n0, idx = 0;\n\n" +
+						tab2 + "for (n = 0; n < l.length; n++)  {\n" +
+						tab2 + "for (n0 = 0; n0 < l0.length; n0++)  {\n" +
+						tab2 + "    l[n] += w[idx] * l0[n0];\n" +
+						tab2 + "    idx++;\n" + tab2 + "}}\n" + tab1 + "}\n\n" +
+					tab1 + "function doTanh(l)  {  for (var i = 0; i < l.length; i++)  l[i] = Math.tanh(l[i]);  }\n\n";  },
+			MAT:  function(dummy, varInsDef)  {
+					var varInsReshape = "";
+					if (varInsDef.length > 0)  {
+						varInsDef = ", varInsVec";
+						varInsReshape = tab2 +
+								"self.var_ins = reshape(varInsVec, [" + layerSize[variationalLayer] + ", 1]);\n";	}
+					return "end\n\nmethods\n\n" + tab1 +
+							"function outputVec = predict(self, inputVec" + varInsDef + ")\n\n" + tab2 +
+							"self.ins = reshape(inputVec, [" +  layerSize[1] + ", 1]);\n" + varInsReshape;  },
+			Py:  function(dummy, varInsDef)  {
+					return tab1 + "\n" + tab1 + "\n" + tab1 + "def predict(self, ins" + varInsDef + "):\n" + tab2 + "\n" +
+						tab2  + "ins = np.atleast_1d(ins)\n" + tab2;  },
+			R:  function(dummy, varInsDef)  {
+					return tab1 + "\n" + tab1 + "NN.function <- function(ins" + varInsDef + ")\n" + tab1 + "{";  }
+		};
+		
+		const clearLayer = {
+			C:  function(lName, lSize, wName)
+					{  return tab1 + "clearLayer(" + lName + ", " + lSize + ");\n";  },
+			Java:  function(lName, lSize, wName)
+					{  return tab2 + "clearLayer(" + lName + ");\n";  },
+			JS:  function(lName, lSize, wName)
+					{  return tab1 + "clearLayer(" + lName + ");\n";  },
+			MAT:  function(lName, lSize, wName)
+					{  return tab2 + "self." + lName + " =";  },
+			Py:  function(lName, lSize, wName)
+					{  return tab2 + lName + " =";  },
+			R:  function(lName, lSize, wName)
+					{  return tab2 + lName + " <-";  }
+		};
+		
+		const setBias = {
+			C:  function(lName, lSize, wName)
+					{  return tab1 + "setLayer(" + lName + ", " + wName + ", " + lSize + ");\n";  },
+			Java:  function(lName, lSize, wName)
+					{  return tab2 + "setLayer(" + lName + ", " + wName + ");\n";  },
+			JS:  function(lName, lSize, wName)
+					{  return tab1 + "setLayer(" + lName + ", " + wName + ");\n";  },
+			MAT:  function(lName, lSize, wName)
+					{  return tab2 + "self." + lName + " = self." + wName;  },
+			Py:  function(lName, lSize, wName)
+					{  return tab2 + lName + " = self." + wName;  },
+			R:  function(lName, lSize, wName)
+					{  return tab2 + lName + " <- " + wName;  }
+		};
+		
+		const addWeights = {
+			C:  function(lName, lSize, l0Name, l0Size, wName, dummy)  {  return tab1 + "addToLayer(" +
+					lName + ", " + lSize + ", " + l0Name  + ", " + l0Size + ", " + wName + ");\n";  },
+			Java:  function(lName, lSize, l0Name, l0Size, wName, dummy)  {  return tab2 + "addToLayer(" +
+					lName + ", " + l0Name + ", " + wName + ");\n";  },
+			JS:  function(lName, lSize, l0Name, l0Size, wName, dummy)  {  return tab1 + "addToLayer(" +
+					lName + ", " + l0Name + ", " + wName + ");\n";  },
+			MAT:  function(lName, lSize, l0Name, l0Size, wName, plusStr)  {
+					return plusStr + " self." + wName + "*self." + l0Name;  },
+			Py:  function(lName, lSize, l0Name, l0Size, wName, plusStr)  {
+					return plusStr + " np.matmul(self." + wName + ", " + l0Name + ")";  },
+			R:  function(lName, lSize, l0Name, l0Size, wName, plusStr)  {
+					return plusStr + " " + wName + "%*%" + l0Name;  }
+		};
+		
+		const doF = {
+			C:  function(lName, lSize)  {  return tab1 + "doTanh(" + lName + ", " + lSize + ");\n";  },
+			Java:  function(lName, lSize)  {  return tab2 + "doTanh(" + lName + ");\n";  },
+			JS:  function(lName, lSize)  {  return tab1 + "doTanh(" + lName + ");\n";  },
+			MAT:  function(lName, lSize)  {  return ";\n" + tab2 + "self." + lName + " = tanh(self." + lName + ");\n";  },
+			Py:  function(lName, lSize)  {  return "\n" + tab2 + lName + " = np.tanh(" + lName + ")\n" + tab2;  },
+			R:  function(lName, lSize)  {  return "\n" + tab2 + lName + " = tanh(" + lName + ")\n";  }
+		};
+		
+		const footers = {
+			C:  function (dummy)  {  return "}";  },
+			Java:  function (dummy)  {  return tab1 + "}\n}";  },
+			JS:  function(writeFunctionDef)  {  if (writeFunctionDef)  return "}";  else  return "";  },
+			MAT:  function(writeFunctionDef)  {  return ";\n\n" + tab2 +
+					"outputVec = self.outs;\n" + tab1 + "end\nend\nend";  },
+			Py:  function (dummy)  {  return "\n" + tab2 + "\n" +
+					tab2 + "return outs\n\n\nmyNN = NNpredictor()";  },
+			R:  function (dummy)  {  return "\n\n" + tab2 + "return(outs)\n" + tab1 + "}\n\n" + tab1 +
+					"return(NN.function)\n}\n\n\nNNpredict <- make.NN()";  }
+		};
+		
+		function layerName(l)  {
+			if (l == 1)  return "ins";
+			else if (l == numLayers-1)  return "outs";
+			else if (l == variationalLayer)  return "var_ins";
+			else if ((variationalLayer > 1) && (l > variationalLayer))  return "hidden_" + (l-2).toString();
+			else  return "hidden_" + (l-1).toString();
+		}
+		
+		function layerShortName(l)
+		{
+			if (l == 0)  return "bias";
+			else if (l == 1)  return "in";
+			else if (l < numLayers-1)  return (l-1).toString();
+			else  return "out";
+		}
+		
+		function weightsName(l0, lf)
+		{
+			if (l0 == 0)  return "bias_" + layerShortName(lf);
+			else  return "w_" + layerShortName(l0) + "_" + layerShortName(lf);
+		}
+		
+		
+		var initLayerStr = initLayerDef[NNlanguage]();
+		var varInsDef = "";
+		if (variationalLayer > 1)  varInsDef = ", " + varInputStr[NNlanguage]() + "var_ins";
+		
+		var rtrn = headers[NNlanguage](writeFunctionDef, initLayerStr, varInsDef);
+		for (cl = 2; cl < numLayers-1; cl++)  {
+		if (cl != variationalLayer)  {
+			rtrn += varDef[NNlanguage](layerName(cl), layerSize[cl]);
+		}}
+		rtrn += "\n";
+		
+		for (cl = 2; cl < numLayers; cl++)  {
+		for (cil = 0; cil < numLayerInputs[cl]; cil++)  {
+			let l0 = layerInputs[cl][cil];
+			let wMatWidth = 0;
+			let wMatRowSeparator = "";
+			if (NNlanguage == "MAT")  {
+				wMatWidth = layerSize[l0];
+				wMatRowSeparator = "; "		}
+			else if ((NNlanguage == "Py") && (l0 > 0))  {
+				wMatWidth = layerSize[l0];
+				wMatRowSeparator = "], ["		}
+			weightString = arrayStr(weights[cl][cil], NNprecision, wMatWidth, wMatRowSeparator,
+					weightsDefLength[NNlanguage]() + weightsName(l0, cl).length, tab3, lineBreak[NNlanguage]);
+			if ((NNlanguage == "Py") && (l0 > 0))  weightString = "[" + weightString + "]";
+			rtrn += weightsDef[NNlanguage](weightsName(l0, cl), weightString, layerSize[cl]);
+		}}
+		
+		let firstInputLayer = 0;
+		if (hasBias)  firstInputLayer = 1;
+		rtrn += methodDef[NNlanguage](initLayerStr, varInsDef);
+		for (cl = 2; cl < numLayers; cl++)  {
+			let lName = layerName(cl);
+			let lSize = layerSize[cl];
+			let plusStr = "";
+			if (cl != variationalLayer)  {
+				if (!hasBias)  {
+					rtrn += "\n" + clearLayer[NNlanguage](lName, lSize, weightsName(0, cl));	}
+				else  {
+					rtrn += "\n" + setBias[NNlanguage](lName, lSize, weightsName(0, cl));
+					plusStr = " +";
+			}	}
+			for (cil = firstInputLayer; cil < numLayerInputs[cl]; cil++)  {
+				let l0 = layerInputs[cl][cil];
+				rtrn += addWeights[NNlanguage](lName, lSize, layerName(l0), layerSize[l0], weightsName(l0, cl), plusStr);
+				plusStr = " +";
+			}
+			if (cl < numLayers-1)  {
+			if (layerAFs[cl] != 0)  {
+				rtrn += doF[NNlanguage](lName, lSize);
+		}	}}
+		rtrn += footers[NNlanguage](writeFunctionDef);
+		
+		return rtrn;
+	};
+	
+	
+	
+	function copyTable(source, dest)  {
+		dest = [];
+		for (var c1 = 0; c1 < source.length; c1++)  {
+			var oneRow = [];
+			for (var c2 = 0; c2 < source[c1].length; c2++)  oneRow.push(source[c1][c2]);
+			dest.push(oneRow);
+		}
+	}
+	
+	
+	
+	function outputCode()  {
+		document.getElementById("writeHeaders").disabled = true;
+		document.getElementById("showInputs").disabled = true;
+		
+		document.getElementById("description").innerHTML = "Generating code..";
+		language = document.getElementById("language").value;
+		displayFileName = "myNN." + fileSuffix[language];
+		tableNote = "";
+		
+		writeOutput("", NNcode(language, precision, true), 2);
+		if ((canCheckPrediction) && (NNerrPrecision != precision))  {
+			NNerrPrecision = precision;
+			
+			if (variationalLayer < 2)  costEstimator = new Function("ins", "outs", NNcode("JS", precision, false));
+			else  costEstimator = new Function("ins", "var_ins", "outs", NNcode("JS", precision, false));
+			NNinputs = trainingInputs;
+			makeNNprediction(costEstimator);
+			
+			let dCost = calcCost(trainingOutputs, false, true);
+			
+			if (percentTestError >= 0)  {
+				updateFractionalError("Est. prediction error ~",
+						percentTestError, oneDig(percentTestError), dCost, oneDig(dCost), false);	}
+			else  {
+				updateFractionalError("Est. prediction error &gt; ~",
+					percentTrainingError, oneDig(percentTrainingError), dCost, oneDig(dCost), false);
+		}	}
+	}
+	
+	
+	
+	function makeNNprediction(theNN)
+	{
+		NNoutputs = new Array(NNinputs.length);
+		for (var cs = 0; cs < NNinputs.length; cs++)  {
+			NNoutputs[cs] = new Array(numOutputs);
+			NNoutputs[cs].fill(0);
+			if (variationalLayer > 1)  theNN(NNinputs[cs], NNvariationalInputs[cs], NNoutputs[cs]);
+			else  theNN(NNinputs[cs], NNoutputs[cs]);		}
+	}
+	
+	function outputPrediction(doRecalc)
+	{
+		var IorO, ci, co, cio, cRow, numOutputRows;
+		
+		function getOutputRow(rowNum)  {
+			var rtrn;
+			
+			if ((rowcol == 1) && (!showInputs))  rtrn = NNoutputs[rowNum];
+			else  {
+				rtrn = [];
+				if (rowcol == 0)  {
+				for (var cs = 0; cs < numSamples; cs++)  {
+					if (!showInputs)  rtrn.push(NNoutputs[cs][rowNum]);
+					else if (IorO[rowNum][0] == 1)  rtrn.push(NNinputs[cs][IorO[rowNum][1]]);
+					else  rtrn.push(NNoutputs[cs][IorO[rowNum][1]]);
+				}}
+				else  {
+				for (var cio = 0; cio < numIOs; cio++)  {
+					if (IorO[cio][0] == 1)  rtrn.push(NNinputs[rowNum][IorO[cio][1]]);
+					else  rtrn.push(NNoutputs[rowNum][IorO[cio][1]]);
+			}	}}
+			
+			return rtrn;
+		}
+		
+		if (doRecalc)  {
+			document.getElementById("writeHeaders").disabled = false;
+			if (!isAutoencoder)  document.getElementById("showInputs").disabled = false;
+			
+			displayFileName = fName.split(".")[0] + "_prediction.csv";
+			
+			if (variationalLayer >= 0)  {
+				NNvariationalInputs = new Array(NNinputs.length);
+				for (var cs = 0; cs < NNvariationalInputs.length; cs++)  {
+					NNvariationalInputs[cs] = new Array(layerSize[variationalLayer]);
+					for (var cn = 0; cn < layerSize[variationalLayer]; cn++)  {
+						if (variationalDist == 1)  NNvariationalInputs[cs][cn] = Math.random();
+						else  NNvariationalInputs[cs][cn] = grand();
+			}	}	}
+			
+			if ((isAutoencoder) && (!hasEncoder) && (doExample))  {
+				if (variationalLayer == 1)  NNinputs = NNvariationalInputs;
+				else  {
+					for (var cs = 0; cs < NNinputs.length; cs++)  {
+					for (var cn = 0; cn < layerSize[1]; cn++)  {
+						NNinputs[cs][cn] = grand();
+			}	}	}}
+			
+			makeNNprediction(NNpredictor);
+		}
+		
+		var NNoutputString = "";
+		if ((writeHeaders) && (rowcol == 1))  {
+			let charFromLeft = 0;
+			if (showInputs)  {
+			for (var cio = 0; cio < numIOs; cio++)  {
+				if (cio > 0)  NNoutputString += separator;
+				charFromLeft += separator.length;
+				if ((wrapTo > 0) && (charFromLeft >= wrapTo))  {
+					NNoutputString += "\n" + tab1;
+					charFromLeft = tab1.length;		}
+				NNoutputString += headersToWrite[cio];
+				charFromLeft += headersToWrite[cio].length;
+			}}
+			else  {
+			for (var co = 0; co < numOutputs; co++)  {
+				if (co > 0)  NNoutputString += separator;
+				charFromLeft += separator.length;
+				if ((wrapTo > 0) && (charFromLeft >= wrapTo))  {
+					NNoutputString += "\n" + tab1;
+					charFromLeft = tab1.length;		}
+				NNoutputString += headersToWrite[Oidx[co]];
+				charFromLeft += headersToWrite[Oidx[co]].length;
+			}}
+			NNoutputString += "\n";
+		}
+		
+		if (showInputs)  {
+			IorO = [];
+			for (cio = 0; cio < numIOs; cio++)  IorO.push(0);
+			if (!isAutoencoder)  for (ci = 0; ci < numInputs; ci++)  IorO[Iidx[ci]] = [1,ci];
+			for (co = 0; co < numOutputs; co++)  IorO[Oidx[co]] = [2,co];
+			numOutputRows = numIOs;			}
+		else  numOutputRows = numOutputs;
+		if (rowcol == 1)  numOutputRows = numSamples;
+		
+		for (cRow = 0; cRow < numOutputRows; cRow++)  {
+			if ((writeHeaders) && (rowcol == 0))  {
+				if (showInputs)  NNoutputString += headersToWrite[cRow]+separator;
+				else  NNoutputString += headersToWrite[Oidx[cRow]]+separator;		}
+			NNoutputString += arrayStr(getOutputRow(cRow), precision, 0, "", 0, tab1, "") + "\n";
+		}
+		
+		writeOutput("", NNoutputString, 1);
+	}
+	
+	
+	function refreshOutput()
+	{
+		if (whichAction == 1)  outputPrediction(false);
+		else if (whichAction == 2)  outputCode();
+	}
+	
+	
+	
+	function toHTML(theText)  {
+		theText = theText.replace(/&/g, "&amp;");
+		theText = theText.replace(/</g, "&lt;");
+		theText = theText.replace(/>/g, "&gt;");
+		theText = theText.replace(/"/g, "&quot;");
+		return theText;
+	}
+	
+	function writeDescription(explanation)  {
+		let descriptor = "";
+		if (displayFileName != "")  descriptor = "<TT>" + toHTML(displayFileName) + "</TT>";
+		descriptor += toHTML(explanation);
+		if (tableNote.length != 0)  descriptor += "*<br><font size=\"-1\">*" + toHTML(tableNote) + "</font>";
+		if (dataWarning)  descriptor += "<p style=\"color:#FF0000\">" +
+				"WARNING: training prediction seems off: bug? bad connection?</p>";
+		document.getElementById("description").innerHTML = descriptor;
+	}
+	
+	function writeOutput(explanation, toWrite, newWA)  {
+		writeDescription(explanation);
+		outputAsString = toWrite;
+		document.getElementById("output").innerHTML = "<pre><code>" + toHTML(toWrite) + "</code></pre>";
+		whichAction = newWA;
+	}
+	
+	
+	function setPrecision(newPrecision)  {
+		precision = newPrecision;
+		var precisionStr = "Floating point precision: &nbsp;" + precision + " digit";
+		if (precision > 1)  precisionStr += "s";
+		if (precision <= 8)  precisionIdx = 0;
+		else  precisionIdx = 1;
+		Ctype = Ctypes[precisionIdx];
+		precisionStr += " (" + Ctype + ")";
+		document.getElementById("digits").innerHTML = precisionStr;
+	}
+	
+	function setCommaSpace(ifspace, doRefresh)
+	{
+		if (ifspace)  separator = ", ";
+		else  separator = ",";
+		if (doRefresh)  refreshOutput();
+	}
+	
+	function setWrap(newWrap)
+	{
+		let newWrapTo = parseInt(newWrap, 10);
+		if (isNaN(newWrapTo))  newWrapTo = 0;
+		let doRefresh = (newWrapTo != wrapTo);
+		wrapTo = newWrapTo;
+		if (doRefresh)  refreshOutput();
+	}
+	
+	function setWriteHeader(newWriteHeaders, doRefresh)
+	{
+		writeHeaders = newWriteHeaders;
+		if (doRefresh)  refreshOutput();
+	}
+	
+	function setIncludeInputs(newIncludeInputs, doRefresh)
+	{
+		showInputs = newIncludeInputs;
+		if (doRefresh)  refreshOutput();
+	}
+	
+	function oneDig(errPct)
+	{
+		return Math.max(1, Math.floor(Math.log10(errPct))+1);
+	}
+	
+	function updateFractionalError(caption, errPct, numDigits, errPct2, numDigits2, firstTime)
+	{
+		var errQuote = errPct.toPrecision(numDigits) + "%";
+		if (numDigits2 > 0)  errQuote += " + " + errPct2.toPrecision(numDigits2) + "%";
+		if (firstTime)  errQuote += " of output variation";
+		document.getElementById("relError").innerHTML = caption + errQuote;
+	}
+	
+	function updateChecks()
+	{
+		document.getElementById("writeHeaders").checked = writeHeaders;
+		if (isAutoencoder)  document.getElementById("showInputs").disabled = true;
+		document.getElementById("showInputs").checked = showInputs;
+	}
+	
+	
+	function startUpload()
+	{
+		NNerrPrecision = 0;
+		if (doExample)  doUpload(null);
+		else  {
+			document.getElementById("uploadLink").click();
+			document.getElementById("uploadLink").value = null;		}
+	}
+	
+	
+	function doUpload(UL)
+	{
+		if (doExample)  fName = "seoul_weather_test.csv";
+		else  fName = UL.files[0].name;
+		displayFileName = fName;
+		writeDescription(" [processing]");
+		
+		if (doExample)  {
+			rowHeaders = [];
+			colHeaders = IOheaders;
+			tableNums = exampleTestData;
+			makePredictionFromTable();
+		}
+		else  {
+			let reader = new FileReader();
+			reader.onload = function() {
+				if (parseCSV(reader.result) != 0)  return;
+				makePredictionFromTable();
+			}
+			reader.readAsText(UL.files[0]);
+		}
+	}
+	
+	
+	function parseCSV(fileString)  {
+		
+		var cf;
+		let hasRowHeader = false;
+		let hasColumnHeader = false;
+		const rows = fileString.split("\n");
+		
+		function writeOutputError(errText)
+		{
+			let lineNoFrom1 = lineNo+1;
+			writeOutput(":  " + errText, "line " + lineNoFrom1 + ":  " + rows[lineNo], 0);
+		}
+		
+		rowHeaders = [];
+		colHeaders = [];
+		tableNums = [];
+		for (lineNo = 0; lineNo < rows.length; lineNo++)  {
+			let fields = rows[lineNo].split(',');
+			if (hasRowHeader)  {
+				rowHeaders.push(fields[0]);
+				fields = fields.slice(1, fields.length);	}
+			
+			if (fields.length > 0)  {
+			if ((fields.length > 1) || (fields[0].length > 0))  {
+				
+				var numericFields = [];
+				for (cf = 0; cf < fields.length; cf++)  numericFields.push(Number(fields[cf]));
+				numericFields = numericFields.filter(el => !isNaN(el));
+				
+				if (lineNo == 0)  {
+				if (numericFields.length < fields.length)  {
+					if ((numericFields.length == fields.length-1) && (numericFields.length > 0))  {
+					if (isNaN(Number(fields[0])))  {
+						hasRowHeader = true;
+						rowHeaders.push(fields[0]);
+						fields = fields.slice(1, fields.length);
+					}}
+					else  {
+						hasColumnHeader = true;
+						colHeaders = fields;
+				}}	}
+				else if ((lineNo == 1) && (hasColumnHeader))  {
+					if ((numericFields.length == fields.length-1) && (numericFields.length > 0))  {
+					if (isNaN(Number(fields[0])))  {
+						hasRowHeader = true;
+						rowHeaders.push(fields[0]);
+						fields = fields.slice(1, fields.length);
+				}	}}
+				
+				if ((lineNo > 0) || (!hasColumnHeader))  {
+					tableNums.push(numericFields);
+					if (numericFields.length != fields.length)  {
+						writeOutputError("non-numeric fields in sample file");
+						return 1;			}
+					if (fields.length != tableNums[0].length)  {
+						writeOutputError("wrong number of fields in row");
+						return 2;
+				}	}
+		}	}}
+		if ((hasRowHeader) && (hasColumnHeader))  colHeaders = colHeaders.slice(1, colHeaders.length);
+		
+		return 0;
+	}
+	
+	
+	function makePredictionFromTable()
+	{
+		if (tableNums.length == 0)  return;
+		
+		let numRows = tableNums.length;
+		let numCols = tableNums[0].length;
+		let rowIOs = ((numRows == numInputs) || (numRows == numIOs));
+		let colIOs = ((numCols == numInputs) || (numCols == numIOs));
+		tableNote = "";
+		
+		var ci, co, cio, cs, tableHasSeparateTargetOuts;
+		if ((rowIOs) && (colIOs))  {
+			
+			function compareArrays(a1, a2)  {
+				if (a1.length == 0)  return false;
+				if (a1.length != a2.length)  return false;
+				for (var ci = 0; ci < a1.length; ci++)  if (a1[ci] != a2[ci])  return false;
+				return true;
+			}
+			
+			const inputHeaders = [];
+			if (IOheaders.length > 0)  {
+			for (var ci = 0; ci < Iidx.length; ci++)  {
+				inputHeaders.push(IOheaders[Iidx[ci]]);
+			}}
+			
+			rowcol = rowcol_train;
+			tableNote = "? - check transpose";
+			if (rowcol_train == 0)  {
+				if ((compareArrays(rowHeaders, inputHeaders))
+						|| (compareArrays(rowHeaders, IOheaders)))  {  rowcol = 0; tableNote = "";  }
+				else if ((compareArrays(colHeaders, inputHeaders))
+						|| (compareArrays(colHeaders, IOheaders)))  rowcol = 1;
+			}
+			else  {
+				if ((compareArrays(colHeaders, inputHeaders))
+						|| (compareArrays(colHeaders, IOheaders)))  {  rowcol = 1; tableNote = "";  }
+				else if ((compareArrays(rowHeaders, inputHeaders))
+						|| (compareArrays(rowHeaders, IOheaders)))  rowcol = 0;
+			}
+		}
+		else if ((rowIOs) || (colIOs))  {
+			if (rowIOs)  rowcol = 0;
+			else  rowcol = 1;
+		}
+		else  {
+			writeOutput(":  wrong number of input " + rowcolNames[rowcol_train] + "s", "", 0 );
+			return;		}
+		
+		var doTransposed = (rowcol_train != rowcol);
+		if (doTransposed)  tableNote = "transposed from training data";
+		
+		initHeaders();
+		
+		if (rowcol == 0)  {
+			numSamples = numCols;
+			tableHasSeparateTargetOuts = ((numRows == numIOs) && (!isAutoencoder));
+			writeHeaders = ((IOheaders.length > 0) || (numRows == rowHeaders.length));
+			if ((writeHeaders) && (IOheaders.length == 0))  {
+				if (tableHasSeparateTargetOuts)  headersToWrite = rowHeaders;
+				else for (ci = 0; ci < numInputs; ci++)  {
+					headersToWrite[Iidx[ci]] = rowHeaders[ci];
+		}	}	}
+		else  {
+			numSamples = numRows;
+			tableHasSeparateTargetOuts = ((numCols == numIOs) && (!isAutoencoder));
+			writeHeaders = ((IOheaders.length > 0) || (numCols == colHeaders.length));
+			if ((writeHeaders) && (IOheaders.length == 0))  {
+				if (tableHasSeparateTargetOuts)  headersToWrite = colHeaders;
+				else for (ci = 0; ci < numInputs; ci++)  {
+					headersToWrite[Iidx[ci]] = colHeaders[ci];
+		}	}	}
+		
+		if ((!isAutoencoder) || (hasEncoder) || (!doExample))  {
+			if ((!tableHasSeparateTargetOuts) && (rowcol == 1))  NNinputs = tableNums;
+			else  {
+				NNinputs = [];
+				trueOutputs = [];
+				for (cs = 0; cs < numSamples; cs++)  {
+					let oneSampleIns = [];
+					let oneSampleOuts = [];
+					for (ci = 0; ci < Iidx.length; ci++)  {
+						if (!tableHasSeparateTargetOuts)  oneSampleIns.push(tableNums[ci][cs]);
+						else if (rowcol == 0)  oneSampleIns.push(tableNums[Iidx[ci]][cs]);
+						else  oneSampleIns.push(tableNums[cs][Iidx[ci]]);		}
+					if (tableHasSeparateTargetOuts)  {
+					for (co = 0; co < Oidx.length; co++)  {
+						if (rowcol == 0)  oneSampleOuts.push(tableNums[Oidx[co]][cs]);
+						else  oneSampleOuts.push(tableNums[cs][Oidx[co]]);		}}
+					NNinputs.push(oneSampleIns);
+					if (tableHasSeparateTargetOuts)  trueOutputs.push(oneSampleOuts);
+		}	}	}
+		
+		showInputs = tableHasSeparateTargetOuts;
+		updateChecks();
+		outputPrediction(true);
+		
+		if (canCheckPrediction)  {
+			if (tableHasSeparateTargetOuts)  {
+				percentTestError = calcCost(trueOutputs, false, false);
+				updateFractionalError("Test set prediction error: ",
+						percentTestError, oneDig(percentTestError), 0, 0, false);	}
+			else if (percentTestError >= 0)  {
+				updateFractionalError("Est. prediction error ~",
+						percentTestError, oneDig(percentTestError), 0, 0, false);	}
+			else  {
+				updateFractionalError("Est. prediction error &gt; ~",
+						percentTrainingError, oneDig(percentTrainingError), 0, 0, false);	}
+	}	}
+	
+	
+	function initHeaders()
+	{
+		headersToWrite = [];
+		if ((IOheaders.length == 0) || ((isAutoencoder) && (!hasDecoder)))  {
+			for (var cio = 0; cio < numIOs; cio++)  headersToWrite.push("");
+			if (!isAutoencoder)  for (var ci = 1; ci <= numInputs; ci++)  headersToWrite[Iidx[ci-1]] = "in_"+ci;
+			if ((isAutoencoder) && (!hasDecoder))  {
+				for (var co = 1; co <= numOutputs; co++)  headersToWrite[Oidx[co-1]] = "feature_"+co;  }
+			else  {
+				for (var co = 1; co <= numOutputs; co++)  headersToWrite[Oidx[co-1]] = "out_"+co;
+		}	}
+		else  {
+		for (var cio = 0; cio < numIOs; cio++)  {
+			headersToWrite.push(IOheaders[cio]);
+		}}
+	}
+	
+	
+	function saveOutput()
+	{
+		const MIMEtypes = [ "text/csv", "text/plain" ];
+		let myFile = new Blob([outputAsString], {type:MIMEtypes[whichAction-1]});
+		if (window.navigator.msSaveOrOpenBlob)
+			window.navigator.msSaveOrOpenBlob(myFile, displayFileName);
+		else  {
+			let tmpLink = document.createElement("a");
+			tmpLink.href = URL.createObjectURL(myFile);
+			tmpLink.download = displayFileName;
+			
+			document.body.appendChild(tmpLink);
+			tmpLink.click();
+			
+			setTimeout(function() {  window.URL.revokeObjectURL(tmpLink.href),
+						document.body.removeChild(tmpLink);  });
+		}
+	}
+	
+	
+	function calcCost(targetOutputs, evalWarning, calcDiffErr)
+	{
+		var relError = 0;
+		for (var co = 0; co < numOutputs; co++)  {
+			var diffWithServer = 0, ySq = 0, yMean = 0, ySigma, trainingError = 0;
+			
+			for (var cs = 0; cs < NNoutputs.length; cs++)  {
+				var oneDiff = NNoutputs[cs][co]-targetOutputs[cs][co];
+				trainingError += oneDiff*oneDiff;
+				ySq += targetOutputs[cs][co]*targetOutputs[cs][co];
+				yMean += targetOutputs[cs][co];
+				if ((evalWarning) || (calcDiffErr))  {
+					var oneDiffWithServer = NNoutputs[cs][co]-outputCheck[cs][co];
+					diffWithServer += oneDiffWithServer*oneDiffWithServer;
+			}	}
+			
+			diffWithServer = Math.sqrt(diffWithServer / NNoutputs.length);
+			trainingError = Math.sqrt(trainingError / NNoutputs.length);
+			ySq /= NNoutputs.length;
+			yMean /= NNoutputs.length;
+			ySigma = Math.sqrt(ySq - yMean*yMean);
+			
+			if (ySigma > 0.)  {
+				if (calcDiffErr)  relError += diffWithServer / ySigma;
+				else  relError += trainingError / ySigma;		}
+		
+			if (evalWarning)  {
+			if (ySq > 0.)  {
+			if (diffWithServer/ySq > 1.e-8)  {
+				dataWarning = true;
+		}	}}}
+		
+		if (dataWarning)  refreshOutput();
+		
+		relError /= numOutputs;
+		return 100*relError;
+	}
+	
+	
+	function setupWindow()  {
+		document.getElementById("description").innerHTML = "Starting..";
+		fName = trainingFileName;
+		if (isAutoencoder)  numIOs = numOutputs;
+		else  numIOs = numInputs+numOutputs;
+		numSamples = trainingInputs.length;
+		rowcol = rowcol_train;
+		initHeaders();
+		writeHeaders = (IOheaders.length > 0);
+		showInputs = !isAutoencoder;
+		tableNote = "";
+		updateChecks();
+		
+		if ((!isAutoencoder) || (hasEncoder))  NNinputs = trainingInputs;
+		else  {
+			NNinputs = new Array(numSamples);
+			for (var cs = 0; cs < numSamples; cs++)  {
+				NNinputs[cs] = new Array(layerSize[1]);
+		}	}
+		
+		setPrecision(document.getElementById("precision").value);
+		setCommaSpace(document.getElementById("numspaces").checked, true);
+		document.getElementById("writeHeaders").checked = writeHeaders;
+		
+		if (variationalLayer < 2)  NNpredictor = new Function("ins", "outs", NNcode("JS", 16, false));
+		else  NNpredictor = new Function("ins", "var_ins", "outs", NNcode("JS", 16, false));
+		if ((!isAutoencoder) || (hasEncoder))  outputPrediction(true);
+		else  document.getElementById("description").innerHTML = "No encoding loaded";
+		
+		if (canCheckPrediction)  {
+			percentTrainingError = calcCost(trainingOutputs, outputCheck.length > 0, false);
+			updateFractionalError("Training set prediction error: ", percentTrainingError, 3, 0, 0, true);
+	}	}
+	
+	</script>
+
+</head>
+<body style="user-select:none;-webkit-user-select:none" onload = setupWindow()>
+	
+	<div style="text-align:center;user-select:text;-webkit-user-select:text">
+	<h2>NN trained on ##N##</h2>
+	<h4>Generated ##D##</h4>
+	</div><br>
+	
+	<font size="+1"><u>Instructions</u>:  <strong>Save this window as an HTML file</strong>
+			or web archive for future use.  From here, you can:
+	
+	<ul><li>Process a new table of inputs using the neural network*;</li>
+	<li>Export the neural network as computer code for use in your own programs.</li></ul></font>
+	*##footnote##<br><br><br><br>
+	
+	
+	
+	<div style="width:550px;height:5px;margin:auto;background-color:rgb(63,116,127)"></div><br><br>
+	
+	<div style="position:relative;width:550px;height:100px;margin:auto">
+	
+	<div style="float:left;width:230px;height:100px;
+			text-align:center;background-color:rgb(220,220,220)">
+	<br><label for="upload">Process new samples</label><br><br>
+	<input type="file" id="uploadLink" name="uploadLink" style="display:none" onchange="doUpload(this)"></input>
+	<button type="button" id="upload" name="upload" onclick="startUpload()">##UBtext##</button>
+	</div>
+	
+	<div style="position:absolute;left:230px;width:90px;top:40px;text-align:center">OR</div>
+	
+	<div style="position:absolute;right:0px;top:0px;width:230px;height:100px;
+			text-align:center;background-color:rgb(208,221,224)">
+	<br><label for="language">Language: </label>
+	<select name="language" id="language">
+		<option value="C">C</option>
+		<option value="Java">Java</option>
+		<option value="JS">JavaScript</option>
+		<option value="MAT">MATLAB</option>
+		<option value="Py">Python</option>
+		<option value="R">R</option>
+	</select><br><br>
+	<button type="button" id="makecode" name="makeCode" onclick="outputCode()">Generate code</button>
+	</div>
+	
+	</div><br><br>
+	
+	<div style="width:550px;height:5px;margin:auto;background-color:rgb(63,116,127)"></div><br><br><br><br>
+	
+	
+	<div style="position:relative;width:550px;border:6px solid #F6F6F6;background-color:#F8F8F8">
+	<div style="width:330px;margin-top:0.25lh;float:left">
+	<div style="width:330px;margin-bottom:.4em" id="digits" name="digits"></div>
+	<input type="range" id="precision" min="1" max="16" value="4"
+			oninput="setPrecision(this.value)" onchange="refreshOutput()"><br>
+	<div style="width:300px;margin-top:.6em" id="relError" name="relError"></div>
+	</div>
+	<div style="width:220px;margin-top:0.25lh;margin-left:330px">
+	<input type="checkbox" id="writeHeaders" name="numspaces"
+			onclick="setWriteHeader(this.checked, true)">
+					<label for="writeHeaders">Write headers</label><br>
+	<input type="checkbox" id="showInputs" name="showInputs" checked
+			onclick="setIncludeInputs(this.checked, true)">
+					<label for="showInputs">Show inputs</label><br>
+	<div style="width:200px;height:1px;margin-top:3px;margin-bottom:3px;background-color:#B0B0B0"></div>
+	<input type="checkbox" id="numspaces" name="numspaces" checked
+			onclick="setCommaSpace(this.checked, true)">
+					<label for="numspaces">Space after commas</label><br>
+	Wrap lines to <input type="text" id="wrapTo" name="wrapTo"
+			style="width:5em" onchange="setWrap(this.value)"> chars<br>
+	</div>
+	</div><br><br>
+	
+	
+	<div style="width:100%;margin:0;padding:0">
+	<div style="display:inline-block;width:450px;user-select:text;-webkit-user-select:text"
+			id="description" name="Description"></div>
+	<button type="button" value="Save" onclick="saveOutput()">Save to file</button><br>
+	<div style="float:left;width:550px;height:2px;margin:auto;background-color:rgb(63,116,127)"></div><br>
+	<div style="user-select:text;-webkit-user-select:text" id="output"></div>
+	</div>
+	
+	
+</body>
+</html>
