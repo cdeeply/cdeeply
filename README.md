@@ -1,4 +1,4 @@
-C Deeply ([cdeeply.com](https://www.cdeeply.com)) builds neural networks *very quickly* from tables of numbers.
+C Deeply ([cdeeply.com](https://www.cdeeply.com)) builds neural networks *very quickly* from small training datasets (<100 kB).
 The web portal allows a 1 second computation time, used for architecture search and network training.
 
 This repository contains libraries and plugins that allow C Deeply's algorithms to be called directly by another application
@@ -13,7 +13,7 @@ Each interface gives access to two methods:
 
 Additional methods (e.g. reinforcement training, methods to use on image/audio data, etc) will be added as they are developed.
 
-All queries are subject to a daily limit.
+Only 20 queries are allowed per user per day.
 
 <!---
 cdeeply/cdeeply is a ✨ special ✨ repository because its `README.md` (this file) appears on your GitHub profile.
