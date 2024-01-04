@@ -31,15 +31,25 @@ int main(int argc, char **argv)
 {
     CDNN NN;
     int rtrn, outRCs[] = { 1 };
+    double trainingData[] = { 3, 4, 1, 2, 6, -1 };
     double ins1[] = { 1., 0. }, ins2[] = { .5, 2. }, out1, out2, sampleOuts[2];
     char *errMsg = "no error";
     
-    rtrn = cdeeply_tabular_encoder(&NN, 2, 1, 2, FEATURE_SAMPLE_ARRAY, DO_ENCODER, DO_DECODER, 1, 0, NORMAL_DIST, NO_MAX, NO_MAX, NO_MAX, NO_MAX, HAS_BIAS, &sampleOuts[0], &errMsg);
-    printf("\n");
+    rtrn = cdeeply_tabular_encoder(&NN, 2, 1, 2, trainingData, NULL,
+            FEATURE_SAMPLE_ARRAY, DO_ENCODER, DO_DECODER,
+            1, 0, NORMAL_DIST, NO_MAX, NO_MAX, NO_MAX, NO_MAX, HAS_BIAS, &sampleOuts[0], &errMsg);
+    if (rtrn != 0)  {
+        printf("Encoder returned error (%i):  %s\n", rtrn, errMsg);
+        return rtrn;    }
     
     free_CDNN(&NN);
     
-    rtrn = cdeeply_tabular_regressor(&NN, 2, 1, 2, outRCs, FEATURE_SAMPLE_ARRAY, NO_MAX, NO_MAX, NO_MAX, NO_MAX, HAS_BIAS, ALLOW_IO_CONNECTIONS, NULL, &errMsg);
+    rtrn = cdeeply_tabular_regressor(&NN, 2, 1, 2, trainingData, NULL,
+            FEATURE_SAMPLE_ARRAY, outRCs,
+            NO_MAX, NO_MAX, NO_MAX, NO_MAX, HAS_BIAS, ALLOW_IO_CONNECTIONS, NULL, &errMsg);
+    if (rtrn != 0)  {
+        printf("Regressor returned error (%i):  %s\n", rtrn, errMsg);
+        return rtrn;    }
     
     printf("\nError: %s; rtrn = %i\n", errMsg, rtrn);
     
