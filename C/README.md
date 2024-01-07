@@ -3,7 +3,7 @@ C/C++ library to call C Deeply's supervised and unsupervised neural network gene
 Using the library involves four steps:
 
 0) Include `cdeeply.h` and define a variable of type `CDNN` to hold the neural network.
-1) Call `cdeeply_tabular_regressor(&myNN, ...)` or `cdeeply_tabular_encoder(&myNN, ...)` to train a neural network in supervised or unsupervised mode.
+1) Call `cdeeply_tabular_regressor(&myNN, ...)` or `cdeeply_tabular_encoder(&myNN, ...)` to train a neural network in supervised or unsupervised mode.  *This step requires an internet connection*! as the training is done server-side.
 2) Call `run_CDNN(&myNN, ...)` as many times as you want to process new data samples -- one sample per function call.
 3) Call `free_CDNN(&myNN)` when you're done.
 
