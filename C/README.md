@@ -15,10 +15,10 @@ Function definitions:
 `        ifNNhasBias, ifAllowingInputOutputConnections, &sampleOutputs, &errorMessageString)`  
 Generates a x->y prediction network using supervised training.  The 'y's in the table are specified by `outputRowOrColumnList`.
 
-`errCode = cdeeply_tabular_encoder(CDNN *NN, numInputs, numFeatures, numVariationalFeatures, numSamples,
+`errCode = cdeeply_tabular_encoder(CDNN *NN, numInputs, numFeatures, numVariationalFeatures, numSamples,`  
 `        &trainingSamples, &importances, sampleTableTranspose,`  
-`        ifDoEncoder, ifDoDecoder, variationalDist,
-`        maxWeights, maxNeurons, maxLayers, maxLayerSkips,
+`        ifDoEncoder, ifDoDecoder, variationalDist,`  
+`        maxWeights, maxNeurons, maxLayers, maxLayerSkips,`  
 `        ifNNhasBias, &sampleOutputs, &errorMessageString)`  
 Generates an autoencoder (or an encoder or decoder) using unsupervised training.  The size of the encoding is determined by `numFeatures`; optional so-called variational features are extra random inputs used by the decoder.
 
