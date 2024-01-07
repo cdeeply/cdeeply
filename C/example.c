@@ -24,41 +24,52 @@
  */
 
 #include <stdio.h>
+#include <math.h>
+#include <stdlib.h>
 #include "cdeeply.h"
 
 
 int main(int argc, char **argv)
 {
     CDNN NN;
-    int rtrn, outRCs[] = { 1 };
-    double trainingData[] = { 3, 4, 1, 2, 6, -1 };
-    double ins1[] = { 1., 0. }, ins2[] = { .5, 2. }, out1, out2, sampleOuts[2];
-    char *errMsg = "no error";
+    const int numInputs = 5;
+    const int numSamples = 100;
+    int c2, io, s, rtrn, outputColumns[] = { numInputs };
+    double trainingData[(numInputs+1)*numSamples], *datum;
+    double out1, sampleOuts[numInputs*numSamples];
+    char *errMsg = "no error", *NNtypes[2] = { "encoder", "regressor" };
     
-    rtrn = cdeeply_tabular_encoder(&NN, 2, 1, 2, trainingData, NULL,
-            FEATURE_SAMPLE_ARRAY, DO_ENCODER, DO_DECODER,
-            1, 0, NORMAL_DIST, NO_MAX, NO_MAX, NO_MAX, NO_MAX, HAS_BIAS, &sampleOuts[0], &errMsg);
-    if (rtrn != 0)  {
-        printf("Encoder returned error (%i):  %s\n", rtrn, errMsg);
-        return rtrn;    }
-    
-    free_CDNN(&NN);
-    
-    rtrn = cdeeply_tabular_regressor(&NN, 2, 1, 2, trainingData, NULL,
-            FEATURE_SAMPLE_ARRAY, outRCs,
-            NO_MAX, NO_MAX, NO_MAX, NO_MAX, HAS_BIAS, ALLOW_IO_CONNECTIONS, NULL, &errMsg);
-    if (rtrn != 0)  {
-        printf("Regressor returned error (%i):  %s\n", rtrn, errMsg);
-        return rtrn;    }
-    
-    printf("\nError: %s; rtrn = %i\n", errMsg, rtrn);
-    
-    out1 = run_CDNN(&NN, ins1)[0];
-    out2 = run_CDNN(&NN, ins2)[0];
-    printf("Results: %g and %g\n", out1, out2);
-printf("sample outs %g %g\n", sampleOuts[0], sampleOuts[1]);
-    
-    free_CDNN(&NN);
+    for (c2 = 0; c2 < 2; c2++)  {
+        
+        datum = trainingData;
+        for (s = 0; s < numSamples; s++)  {
+            double iSum = 0.;     // the last row is just some function
+            for (io = 0; io < numInputs-c2; io++)  {
+                *datum = ((double) rand())/RAND_MAX;
+                iSum += (*datum) * sin((double) io) / numInputs;
+                datum++;
+            }
+            *datum = cos(iSum);
+            datum++;
+        }
+        
+        if (c2 == 0)  {
+            rtrn = cdeeply_tabular_encoder(&NN, numInputs, 1, 0, numSamples, trainingData, NULL, SAMPLE_FEATURE_ARRAY,
+                    DO_ENCODER, DO_DECODER, NORMAL_DIST,
+                    10000, NO_MAX, NO_MAX, NO_MAX, HAS_BIAS, &sampleOuts[0], &errMsg);      }
+        else  {
+            rtrn = cdeeply_tabular_regressor(&NN, numInputs, 1, numSamples, trainingData, NULL, SAMPLE_FEATURE_ARRAY, outputColumns,
+                    NO_MAX, NO_MAX, NO_MAX, NO_MAX, HAS_BIAS, ALLOW_IO_CONNECTIONS, &sampleOuts[0], &errMsg);     }
+        
+        if (rtrn != 0)  {
+            printf("Error:  %s returned error (%i):  %s\n", NNtypes[c2], rtrn, errMsg);
+            return rtrn;    }
+        
+        out1 = run_CDNN(&NN, trainingData)[0];
+        printf("Output from first sample:  %g; compare with %g from server\n", NNtypes[c2], out1, sampleOuts[0]);
+        
+        free_CDNN(&NN);
+    }
     
     return 0;
 }

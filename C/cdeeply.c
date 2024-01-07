@@ -31,13 +31,12 @@
 #include <curl/curl.h>
 
 
-typedef struct { char *name; char **data; } postField;
+typedef struct { const char *name; char **data; } postField;
 typedef struct { void *nextBuffer; int numChars; } bufferType;
 
 char *charPtr, *endChars;
 long curlWriteDataSize;
-bufferType *readBuffer1;
-
+bufferType *readBuffer;
 
 
 int cdReadNum(void *theNum, int mode)
@@ -95,12 +94,13 @@ char *data2table(double *data, int numIOs, int numSamples, int transpose)
     numPtr = data;
     for (i1 = 0; i1 < dim1; i1++)  {
         if (i1 > 0)  {  *charPtr = '\n';  charPtr++;  }
-        for (i2 = 0; i2 < dim1; i2++)  {
+        for (i2 = 0; i2 < dim2; i2++)  {
             if (i2 > 0)  {  *charPtr = ',';  charPtr++;  }
             sprintf(charPtr, "%g%n", *numPtr, &numLength);
             charPtr += numLength;
             numPtr++;
     }   }
+    *charPtr = 0;
     
     return table;
 }
@@ -142,7 +142,6 @@ int cdeeply_getNN(CDNN *NN, char *NNchars, long numChars, double *sampleOutputs,
         
         if (cdReadInts(NN->layerInputs[l], NN->numLayerInputs[l]) != 0)  return CD_NN_READ_ERROR;
     }
-    
     for (l = 0; l < NN->numLayers; l++)  {
         NN->weights[l] = malloc(NN->numLayerInputs[l]*sizeof(double *));
         if (NN->weights[l] == NULL)  return CD_OUT_OF_MEMORY_ERROR;
@@ -151,7 +150,7 @@ int cdeeply_getNN(CDNN *NN, char *NNchars, long numChars, double *sampleOutputs,
             inputLayer = NN->layerInputs[l][li];
             numWeights = NN->layerSize[l]*NN->layerSize[inputLayer];
             
-            NN->weights[l][li] = malloc(numWeights*sizeof(double *));
+            NN->weights[l][li] = malloc(numWeights*sizeof(double));
             if (NN->weights[l][li] == NULL)  return CD_OUT_OF_MEMORY_ERROR;
             
             if (cdReadFloats(NN->weights[l][li], numWeights) != 0)  return CD_NN_READ_ERROR;
@@ -162,36 +161,54 @@ int cdeeply_getNN(CDNN *NN, char *NNchars, long numChars, double *sampleOutputs,
         return CD_NN_READ_ERROR;
     }}
     
-    free(NNchars);
-    
     return 0;
 }
 
 
 
-static size_t curlWriteCallback(void *newData, size_t dataLength, size_t typeSize, void *ptr)
+static size_t curlWriteCallback(void *newData, size_t typeSize, size_t dataLength, void *ptr)
 {
     size_t numBytes = dataLength*typeSize;
-    bufferType **readBufferH = (bufferType **) ptr;
+    bufferType *newBuffer;
     
-    *readBufferH = (bufferType *) malloc(sizeof(bufferType) + numBytes);
-    if (*readBufferH == NULL)  return 0;
-    if (readBuffer1 == NULL)  readBuffer1 = *readBufferH;
+    newBuffer = (bufferType *) malloc(sizeof(bufferType) + numBytes);
+    if (newBuffer == NULL)  return 0;
     
-    ((bufferType *) *readBufferH)->nextBuffer = NULL;
-    ((bufferType *) *readBufferH)->numChars = numBytes;
-    memcpy((void *) ((*readBufferH) + 1), newData, numBytes);
+    newBuffer->nextBuffer = NULL;
+    newBuffer->numChars = numBytes;
+    memcpy((void *) (newBuffer + 1), newData, numBytes);
     curlWriteDataSize += numBytes;
+    
+    if (*(bufferType **) ptr == NULL)  *(bufferType **) ptr = newBuffer;
+    else  readBuffer->nextBuffer = (bufferType *) newBuffer;
+    readBuffer = newBuffer;
     
     return numBytes;
 }
 
 
+char errMsgChars[400];
+
+void setErrMsg(char *msg)
+{
+    int i;
+    char *c = errMsgChars;
+    
+    for (i = 0; i < sizeof(errMsgChars)-4; i++)  {
+        *c = msg[i];
+        if (*c == 0)  return;
+        c++;
+    }
+    
+    c[0] = c[1] = c[2] = '.';
+    c[3] = 0;
+}
+
 int cdeeply_buildNN(CDNN *NN, double *sampleOutputs,
-            int numSamples, postField *toPOST, int numPostFields, char **errMsg)
+            int numSamples, postField *toPOST, int numPostFields)
 {
     int p, rtrn;
-    bufferType *readBuffer;
+    bufferType *readBuffer1;
     char *readBufferChars, *readBufferScanner;
     CURL *curlP;
     curl_mime *mime;
@@ -217,7 +234,7 @@ int cdeeply_buildNN(CDNN *NN, double *sampleOutputs,
     readBuffer1 = NULL;
     curlWriteDataSize = 0;
     curl_easy_setopt(curlP, CURLOPT_WRITEFUNCTION, curlWriteCallback);
-    curl_easy_setopt(curlP, CURLOPT_WRITEDATA, (void *) &readBuffer);
+    curl_easy_setopt(curlP, CURLOPT_WRITEDATA, (void *) &readBuffer1);
     
     rtrn = curl_easy_perform(curlP);
     if (rtrn != CURLE_OK)  return rtrn;
@@ -237,38 +254,40 @@ int cdeeply_buildNN(CDNN *NN, double *sampleOutputs,
     *readBufferScanner = 0;
     
     if (!((*readBufferChars >= '0') && (*readBufferChars <= '9')))  {
-        if (errMsg != NULL)  *errMsg = readBufferChars;
-        return CD_PARAMS_ERR;          }
+        setErrMsg(readBufferChars);
+        rtrn = CD_PARAMS_ERR;
+    }
+    else  {
+        rtrn = cdeeply_getNN(NN, readBufferChars, curlWriteDataSize, sampleOutputs, numSamples);
+        if (rtrn == CD_NN_READ_ERROR)  setErrMsg("Problem reading neural network from server");
+        else if (rtrn == CD_NN_READ_ERROR)  setErrMsg(readBufferChars);
+    }
     
-    rtrn = cdeeply_getNN(NN, readBufferChars, curlWriteDataSize+1, sampleOutputs, numSamples);
-    if (errMsg != NULL)  {
-        if (rtrn == CD_NN_READ_ERROR)  *errMsg = "Error reading NN params";
-        else if (rtrn == CD_NN_READ_ERROR)  *errMsg = readBufferChars;      }
-    
+    free(readBufferChars);
     curl_easy_cleanup(curlP);
     curl_global_cleanup();
     
-    return 0;
+    return rtrn;
 }
 
 
-char *rowcol[2] = { "columns", "rows" };
 char *checked[2] = { "off", "on" };
 char *vDists[2] = { "uniform", "normal" };
 char *NNtypes[2] = { "autoencoder", "regressor" };
 char *SubmitStr = "Submit";
 
-int cdeeply_tabular_encoder(CDNN *NN, int numInputs, int numOutputs, int numSamples,
+int cdeeply_tabular_encoder(CDNN *NN, int numInputs, int numFeatures,
+        int numVariationalFeatures, int numSamples,
         double *trainingSamples, double *importances, int transpose,
-        int doEncoder, int doDecoder, int numFeatures,
-        int numVariationalFeatures, int variationalDist,
-        int maxWeights, int maxNeurons, int maxLayers,
-        int maxLayerSkips, int hasBias, double *sampleOutputs, char **errMsg)
+        int doEncoder, int doDecoder, int variationalDist,
+        int maxWeights, int maxNeurons, int maxLayers, int maxLayerSkips,
+        int hasBias, double *sampleOutputs, char **errMsg)
 {
     int rtrn;
     char *trainingSamplesStr, *importancesStr, strs[120], *numFeaturesStr = &strs[0];
     char *numVFsStr = &strs[20], *maxWeightsStr = &strs[40], *maxNeuronsStr = &strs[60];
     char *maxLayersStr = &strs[80], *maxLayerSkipsStr = &strs[100];
+    char *rowcol[2] = { "columns", "rows" };
     postField toPOST[] = {
         { "samples", &trainingSamplesStr },
         { "importances", &importancesStr },
@@ -288,9 +307,9 @@ int cdeeply_tabular_encoder(CDNN *NN, int numInputs, int numOutputs, int numSamp
         { "fromWebpage", &checked[0] }
     };
     
-    trainingSamplesStr = data2table(trainingSamples, numInputs+numOutputs, numSamples, transpose);
+    trainingSamplesStr = data2table(trainingSamples, numInputs, numSamples, transpose);
     if (importances == NULL)  importancesStr = "";
-    else  importancesStr = data2table(importances, numOutputs, numSamples, transpose);
+    else  importancesStr = data2table(importances, numInputs, numSamples, transpose);
     if ((trainingSamplesStr == NULL) || (importancesStr == NULL)) return CD_OUT_OF_MEMORY_ERROR;
     
     sprintf(numFeaturesStr, "%i", numFeatures);
@@ -301,22 +320,25 @@ int cdeeply_tabular_encoder(CDNN *NN, int numInputs, int numOutputs, int numSamp
     if (maxLayers >= 0)  sprintf(maxLayersStr, "%i", maxLayers);
     if (maxLayerSkips >= 0)  sprintf(maxLayerSkipsStr, "%i", maxLayerSkips);
     
-    rtrn = cdeeply_buildNN(NN, sampleOutputs, numSamples,
-            toPOST, sizeof(toPOST)/sizeof(postField), errMsg);
+    rtrn = cdeeply_buildNN(NN, sampleOutputs, numSamples, toPOST, sizeof(toPOST)/sizeof(postField));
+    if (errMsg != NULL)  *errMsg = &errMsgChars[0];
+    
+    free(trainingSamplesStr);
+    if (importances != NULL)  free(importancesStr);
     
     return rtrn;
 }
 
 
 int cdeeply_tabular_regressor(CDNN *NN, int numInputs, int numOutputs, int numSamples,
-        double *trainingSamples, double *importances, int transpose,
-        int *outputRowsCols, int maxWeights, int maxNeurons,
-        int maxLayers, int maxLayerSkips, int hasBias, int allowIOconnections,
-        double *sampleOutputs, char **errMsg)
+        double *trainingSamples, double *importances, int transpose, int *outputRowsCols,
+        int maxWeights, int maxNeurons, int maxLayers, int maxLayerSkips,
+        int hasBias, int allowIOconnections, double *sampleOutputs, char **errMsg)
 {
     int o, charIdx, rtrn;
     char *outputRowsColsStr, *trainingSamplesStr, *importancesStr, strs[80], *maxWeightsStr = &strs[0];
     char *maxNeuronsStr = &strs[20], *maxLayersStr = &strs[40], *maxLayerSkipsStr = &strs[60];
+    char *rowcol[2] = { "rows", "columns" };
     postField toPOST[] = {
         { "samples", &trainingSamplesStr },
         { "importances", &importancesStr },
@@ -343,9 +365,9 @@ int cdeeply_tabular_regressor(CDNN *NN, int numInputs, int numOutputs, int numSa
     
     if (numOutputs <= 0)  {  charIdx = 0; outputRowsColsStr[0] = 0;  }
     else  {
-        charIdx = sprintf(outputRowsColsStr, "%i", outputRowsCols[0]);
+        charIdx = sprintf(outputRowsColsStr, "%i", outputRowsCols[0]+1);
         for (o = 1; o < numOutputs; o++)  {
-            charIdx += sprintf(outputRowsColsStr + charIdx, ",%i", outputRowsCols[o]);
+            charIdx += sprintf(outputRowsColsStr + charIdx, ",%i", outputRowsCols[o]+1);
     }   }
     
     maxWeightsStr[0] = maxNeuronsStr[0] = maxLayersStr[0] = maxLayerSkipsStr[0] = 0;
@@ -355,9 +377,12 @@ int cdeeply_tabular_regressor(CDNN *NN, int numInputs, int numOutputs, int numSa
     if (maxLayerSkips >= 0)  sprintf(maxLayerSkipsStr, "%i", maxLayerSkips);
     
     rtrn = cdeeply_buildNN(NN, sampleOutputs, numSamples,
-            toPOST, sizeof(toPOST)/sizeof(postField), errMsg);
+            toPOST, sizeof(toPOST)/sizeof(postField));
+    if (errMsg != NULL)  *errMsg = &errMsgChars[0];
     
     free(outputRowsColsStr);
+    free(trainingSamplesStr);
+    if (importances != NULL)  free(importancesStr);
     
     return rtrn;
 }

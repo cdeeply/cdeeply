@@ -70,8 +70,8 @@ typedef struct {
 
 extern int cdeeply_tabular_regressor(CDNN *, int, int, int, double *, double *, int, int *,
         int, int, int, int, int, int, double *, char **);
-extern int cdeeply_tabular_encoder(CDNN *, int, int, int, double *, double *, int,
-        int, int, int, int, int, int, int, int, int, int, double *, char **);
+extern int cdeeply_tabular_encoder(CDNN *, int, int, int, int, double *, double *, int,
+        int, int, int, int, int, int, int, int, double *, char **);
 extern double *run_CDNN(CDNN *, double *);
 extern void free_CDNN(CDNN *);
 
