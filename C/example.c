@@ -32,12 +32,12 @@
 int main(int argc, char **argv)
 {
     CDNN NN;
-    const int numInputs = 5;
+    const int numInputs = 10;
     const int numSamples = 100;
     int c2, io, s, rtrn, outputColumns[] = { numInputs };
     double trainingData[(numInputs+1)*numSamples], *datum;
-    double out1, sampleOuts[numInputs*numSamples];
-    char *errMsg = "no error", *NNtypes[2] = { "encoder", "regressor" };
+    double out1, outputCheck[numInputs*numSamples];
+    char *errMsg, *NNtypes[2] = { "encoder", "regressor" };
     
     for (c2 = 0; c2 < 2; c2++)  {
         
@@ -53,20 +53,25 @@ int main(int argc, char **argv)
             datum++;
         }
         
+        printf("Generating %s..\n", NNtypes[c2]);
         if (c2 == 0)  {
             rtrn = cdeeply_tabular_encoder(&NN, numInputs, 1, 0, numSamples, trainingData, NULL, SAMPLE_FEATURE_ARRAY,
                     DO_ENCODER, DO_DECODER, NORMAL_DIST,
-                    10000, NO_MAX, NO_MAX, NO_MAX, HAS_BIAS, &sampleOuts[0], &errMsg);      }
+                    NO_MAX, NO_MAX, NO_MAX, NO_MAX, HAS_BIAS, &outputCheck[0], &errMsg);      }
         else  {
             rtrn = cdeeply_tabular_regressor(&NN, numInputs, 1, numSamples, trainingData, NULL, SAMPLE_FEATURE_ARRAY, outputColumns,
-                    NO_MAX, NO_MAX, NO_MAX, NO_MAX, HAS_BIAS, ALLOW_IO_CONNECTIONS, &sampleOuts[0], &errMsg);     }
+                    NO_MAX, NO_MAX, NO_MAX, NO_MAX, HAS_BIAS, ALLOW_IO_CONNECTIONS, &outputCheck[0], &errMsg);     }
         
         if (rtrn != 0)  {
-            printf("Error:  %s returned error (%i):  %s\n", NNtypes[c2], rtrn, errMsg);
+            printf("  ** Server error %i (%s)\n", rtrn, errMsg);
             return rtrn;    }
         
-        out1 = run_CDNN(&NN, trainingData)[0];
-        printf("Output from first sample:  %g; compare with %g from server\n", NNtypes[c2], out1, sampleOuts[0]);
+        out1 = run_CDNN(&NN, trainingData)[0];      // trainingData is also a pointer to sample #1's input vector
+        if (fabs(out1-outputCheck[0]) > .0001)  {
+            printf("  ** Network problem?  Sample 1 output was calculated as %g locally vs %g by the server\n", out1, outputCheck[0]);
+            return 200;    }
+        
+        printf("  Output on sample #1 was %g\n", NNtypes[c2], out1);
         
         free_CDNN(&NN);
     }
