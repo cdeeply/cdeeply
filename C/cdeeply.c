@@ -271,7 +271,7 @@ int cdeeply_buildNN(CDNN *NN, double *sampleOutputs,
 }
 
 
-char *checked[2] = { "off", "on" };
+char *checked[3] = { "", "on", "off" };
 char *vDists[2] = { "uniform", "normal" };
 char *NNtypes[2] = { "autoencoder", "regressor" };
 char *SubmitStr = "Submit";
@@ -304,7 +304,7 @@ int cdeeply_tabular_encoder(CDNN *NN, int numInputs, int numFeatures,
         { "hasBias", &checked[hasBias] },
         { "submitStatus", &SubmitStr },
         { "NNtype", &NNtypes[0] },
-        { "fromWebpage", &checked[0] }
+        { "fromWebpage", &checked[2] }
     };
     
     trainingSamplesStr = data2table(trainingSamples, numInputs, numSamples, transpose);
@@ -352,7 +352,7 @@ int cdeeply_tabular_regressor(CDNN *NN, int numInputs, int numOutputs, int numSa
         { "allowIO", &checked[allowIOconnections] },
         { "submitStatus", &SubmitStr },
         { "NNtype", &NNtypes[1] },
-        { "fromWebpage", &checked[0] }
+        { "fromWebpage", &checked[2] }
     };
     
     trainingSamplesStr = data2table(trainingSamples, numInputs+numOutputs, numSamples, transpose);
