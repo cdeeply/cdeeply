@@ -17,7 +17,7 @@ Generates a x->y prediction network using *supervised* training on `trainingSamp
 * `trainingSamples` is a matrix having dimensions `(numInputs+numTargetOutputs)` and `numSamples`.
   * Set `sampleTableTranspose` to `"FEATURE_SAMPLE_ARRAY"` for `trainingSamples(input_output, sample)` array ordering, or `"SAMPLE_FEATURE_ARRAY"` for `trainingSamples(sample, input_output)` array ordering.
   * The rows/columns in `trainingSamples` corresponding to the target outputs are specified by `outputRowOrColumnList`.
-* The optional `importances` argument weights the cost function of the target outputs.  Pass as a matrix having dimensions `numTargetOutputs` and `numSamples` (ordered according to `transpose`), or `[]` if this parameter isn't being used.
+* The optional `importances` argument weights the cost function of the target outputs.  Pass as a matrix having dimensions `numTargetOutputs` and `numSamples` (ordered according to `sampleTableTranspose`), or `[]` if this parameter isn't being used.
 * Optional parameters `maxWeights`, `maxHiddenNeurons` and `maxLayers` limit the size of the neural network, and `maxLayerSkips` limits the depth of layer-to-layer connections.  Set unused parameters to `"NO_MAX"`.
 * Set `ifNNhasBias` to `"HAS_BIAS"` unless you don't want to allow a bias (i.e. constant) term in each neuron's input, in which case set this to `"NO_BIAS"`.
 * Set `ifAllowingInputOutputConnections` to `"ALLOW_IO_CONNECTIONS"` or `"NO_IO_CONNECTIONS"` depending on whether to allow the input layer to feed directly into the output layer.  (Outliers in new input data might cause wild outputs).
