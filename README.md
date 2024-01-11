@@ -14,7 +14,7 @@ Each interface gives access to two methods:
 
 Additional methods (e.g. reinforcement training, methods to use on image/audio data, etc) will be added as they are developed.
 
-Only 20 queries are allowed per user per day.
+Only 20 queries are allowed per user per day.  Questions or comments should be directed to:  [info@cdeeply.com](mailto:info@cdeeply.com).
 
 <!---
 cdeeply/cdeeply is a ✨ special ✨ repository because its `README.md` (this file) appears on your GitHub profile.
