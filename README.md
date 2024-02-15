@@ -5,6 +5,7 @@ This repository contains APIs that allow C Deeply's algorithms to be called dire
 rather than manually through the web portal.  The current interfaces are:
 
 - C and C++
+- MATLAB / Octave
 - UNIX Bash scripts -- these embed neural networks in [myNN.html](https://github.com/cdeeply/cdeeply/blob/main/myNN.html), just as the web portal does
 
 Each interface gives access to two methods:
