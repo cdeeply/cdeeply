@@ -1,7 +1,7 @@
 C Deeply ([cdeeply.com](https://www.cdeeply.com)) builds neural networks *very quickly* from small training datasets (<100 kB).
 The web portal allows a 1 second computation time, used for architecture search and network training.
 
-This repository contains libraries and plugins that allow C Deeply's algorithms to be called directly by another application
+This repository contains APIs that allow C Deeply's algorithms to be called directly by another application
 rather than manually through the web portal.  The current interfaces are:
 
 - C and C++
