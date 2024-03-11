@@ -6,6 +6,7 @@ rather than manually through the web portal.  The current interfaces are:
 
 - C and C++
 - MATLAB / Octave
+- Python
 - R
 - UNIX Bash scripts -- these embed neural networks in [myNN.html](https://github.com/cdeeply/cdeeply/blob/main/myNN.html), just as the web portal does
 
