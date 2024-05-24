@@ -4,7 +4,7 @@ The web portal and APIs allow a 1 second computation time, used for architecture
 This repository contains the APIs that allow C Deeply's algorithms to be called directly by another application
 rather than manually through web form submissions.  The current interfaces are:
 
-- C and C++
+- C / C++
 - MATLAB / Octave
 - Python
 - R
